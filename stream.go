@@ -3,6 +3,7 @@ package csv
 import (
 	"io"
 	"strings"
+	"fmt"
 )
 
 type SyntaxError struct {
@@ -59,9 +60,15 @@ func (dec *Decoder) Decode() ([]string, error) {
 
 func (dec *Decoder) peek() (byte, error) {
 	var err error
+	fmt.Println("------- b:peek --------")
+	
 	for {
+		fmt.Println("for i := dec.scanp; i < len(dec.buf); i++")
+		fmt.Printf("for i := %d; i < %d; i++\n", dec.scanp, len(dec.buf))
 		for i := dec.scanp; i < len(dec.buf); i++ {
 			c := dec.buf[i]
+			fmt.Println(">> c := dec.buf[i]")
+			fmt.Printf("%v := dec.buf[%d]\n", string(c), i)
 			if isSpace(c) {
 				continue
 			}
@@ -70,6 +77,7 @@ func (dec *Decoder) peek() (byte, error) {
 		}
 		// buffer has been scanned, now report any error
 		if err != nil {
+			fmt.Println("------- e:peek --------")
 			return 0, err
 		}
 		err = dec.refill()
@@ -77,26 +85,42 @@ func (dec *Decoder) peek() (byte, error) {
 }
 
 func (dec *Decoder) refill() error {
+	fmt.Println("------- b:refill --------")
 	// Make room to read more into the buffer.
 	// First slide down data already consumed.
+	fmt.Printf("dec.scanp %d\n", dec.scanp)
 	if dec.scanp > 0 {
+		fmt.Printf("copy(dec.buf[%d], dec.buf[%d])\n", len(dec.buf), len(dec.buf[dec.scanp:]))
 		n := copy(dec.buf, dec.buf[dec.scanp:])
 		dec.buf = dec.buf[:n]
+		fmt.Printf("dec.buf[:%d]\n", len(dec.buf))
 		dec.scanp = 0
+		fmt.Printf(">> reset: dec.scanp = 0 \n")
 	}
 	
 	// Grow buffer if not large enough.
 	const minRead = 512
+	fmt.Println(">> if cap(dec.buf)-len(dec.buf) < minRead {")
+	fmt.Printf("if %d - %d < %d {\n", cap(dec.buf), len(dec.buf), minRead)
 	if cap(dec.buf)-len(dec.buf) < minRead {
 		newBuf := make([]byte, len(dec.buf), 2*cap(dec.buf)+minRead)
+		fmt.Println(">> newBuf := make([]byte, len(dec.buf), 2*cap(dec.buf)+minRead)")
+		fmt.Printf("newBuf := make([]byte, %d, %d)\n",len(dec.buf), 2*cap(dec.buf)+minRead)
 		copy(newBuf, dec.buf)
+		fmt.Println(">> copy(newBuf, dec.buf)")
 		dec.buf = newBuf
+		fmt.Println(">> dec.buf = newBuf")
 	}
 	
 	// Read. Delay error for next iteration (after scan).
 	n, err := dec.r.Read(dec.buf[len(dec.buf):cap(dec.buf)])
+	fmt.Printf(">> n, err := dec.r.Read(dec.buf[len(dec.buf):cap(dec.buf)])\n")
+	fmt.Printf("%d, err := dec.r.Read(dec.buf[%d:%d])\n", n, len(dec.buf), cap(dec.buf))
 	dec.buf = dec.buf[0: len(dec.buf)+n]
+	fmt.Println(">> dec.buf = dec.buf[0: len(dec.buf)+n]")
+	fmt.Printf("dec.buf = dec.buf[0: %d]\n", len(dec.buf)+n)
 	
+	fmt.Println("------- e:refill --------")
 	return err
 }
 
@@ -112,18 +136,26 @@ func isSpace(c byte) bool {
 }
 
 func (dec *Decoder) readValue() (int, error) {
+	fmt.Println("------- b:readValue --------")
 	scanp := dec.scanp
 
 Input:
 	for {
+		fmt.Println(">> for i, c := range dec.buf[scanp:]")
 		for i, c := range dec.buf[scanp:] {
+		//fmt.Printf("for %d, %c := range dec.buf[%d]\n", i, c, len(dec.buf[scanp:]))
 			switch c {
 			case '\n':
+				fmt.Println(">> scanp += i")
 				scanp += i
+				fmt.Printf("%d += %d\n", scanp, i)
 				break Input
 			}
 		}
 	}
+	fmt.Println(">> return scanp - dec.scanp, nil")
+	fmt.Printf("%d, nil \n", scanp - dec.scanp)
+	fmt.Println("------- e:readValue --------")
 	return scanp - dec.scanp, nil
 }
 
