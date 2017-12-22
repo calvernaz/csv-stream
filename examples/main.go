@@ -9,6 +9,8 @@ import (
 	"strings"
 	
 	csvstream "github.com/calvernaz/csv-stream"
+	"os"
+	"bufio"
 )
 
 func readStreamCsv() {
@@ -91,9 +93,27 @@ func jsonStream() {
 	fmt.Printf("%T: %v\n", t, t)
 }
 
+func readCsvFileStream() {
+	file, err := os.Open("./titanic_data.csv")
+	if err != nil {
+		panic(err)
+	}
+	dec := csvstream.NewDecoder(bufio.NewReader(file))
+	
+	// read open bracket
+	// while the array contains values
+	for dec.More() {
+		fmt.Println(dec.Decode())
+		fmt.Println("more data comming")
+	}
+	
+	fmt.Println("no more data")
+}
+
 
 func main() {
 	//jsonStream()
 	//readCsv()
-	readStreamCsv()
+	//readStreamCsv()
+	readCsvFileStream()
 }

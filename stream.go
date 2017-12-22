@@ -2,8 +2,6 @@ package csv
 
 import (
 	"io"
-	"strings"
-	"fmt"
 )
 
 type SyntaxError struct {
@@ -32,12 +30,6 @@ func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{r: r}
 }
 
-type Header interface{}
-
-func (dec *Decoder) Header() (Header, error) {
-	return nil, nil
-}
-
 func (dec *Decoder) Decode() ([]string, error) {
 	if dec.err != nil {
 		return nil, dec.err
@@ -52,32 +44,45 @@ func (dec *Decoder) Decode() ([]string, error) {
 		return nil, err
 	}
 	
-	line := string(dec.buf[dec.scanp: dec.scanp+n])
+	line := dec.buf[dec.scanp: dec.scanp+n]
 	dec.scanp += n
-	dec.scanp++
-	return strings.Split(line, ","), nil
+	
+	var parts []string
+	p := 0
+	for i, c := range line {
+		switch {
+		case c == ',' && dec.tokenState != tokenBeginQuotes:
+			parts = append(parts, string(line[p:i]))
+			p = i+1
+			dec.tokenState = tokenSeparator
+		case c == '"':
+			if dec.tokenState == tokenBeginQuotes {
+				dec.tokenState = tokenEndQuotes
+			} else {
+				dec.tokenState = tokenBeginQuotes
+			}
+		}
+	}
+	return parts, nil
+	//lineSplit := strings.Split(line, ",")
+	//return lineSplit, nil
 }
 
 func (dec *Decoder) peek() (byte, error) {
 	var err error
-	fmt.Println("------- b:peek --------")
 	
 	for {
-		fmt.Println("for i := dec.scanp; i < len(dec.buf); i++")
-		fmt.Printf("for i := %d; i < %d; i++\n", dec.scanp, len(dec.buf))
 		for i := dec.scanp; i < len(dec.buf); i++ {
 			c := dec.buf[i]
-			fmt.Println(">> c := dec.buf[i]")
-			fmt.Printf("%v := dec.buf[%d]\n", string(c), i)
-			if isSpace(c) {
+			if isSpace(c) || isNewLine(c) {
 				continue
 			}
+			dec.tokenState = tokenNewLineValue
 			dec.scanp = i
 			return c, nil
 		}
 		// buffer has been scanned, now report any error
 		if err != nil {
-			fmt.Println("------- e:peek --------")
 			return 0, err
 		}
 		err = dec.refill()
@@ -85,42 +90,25 @@ func (dec *Decoder) peek() (byte, error) {
 }
 
 func (dec *Decoder) refill() error {
-	fmt.Println("------- b:refill --------")
 	// Make room to read more into the buffer.
 	// First slide down data already consumed.
-	fmt.Printf("dec.scanp %d\n", dec.scanp)
 	if dec.scanp > 0 {
-		fmt.Printf("copy(dec.buf[%d], dec.buf[%d])\n", len(dec.buf), len(dec.buf[dec.scanp:]))
 		n := copy(dec.buf, dec.buf[dec.scanp:])
 		dec.buf = dec.buf[:n]
-		fmt.Printf("dec.buf[:%d]\n", len(dec.buf))
 		dec.scanp = 0
-		fmt.Printf(">> reset: dec.scanp = 0 \n")
 	}
 	
 	// Grow buffer if not large enough.
 	const minRead = 512
-	fmt.Println(">> if cap(dec.buf)-len(dec.buf) < minRead {")
-	fmt.Printf("if %d - %d < %d {\n", cap(dec.buf), len(dec.buf), minRead)
 	if cap(dec.buf)-len(dec.buf) < minRead {
 		newBuf := make([]byte, len(dec.buf), 2*cap(dec.buf)+minRead)
-		fmt.Println(">> newBuf := make([]byte, len(dec.buf), 2*cap(dec.buf)+minRead)")
-		fmt.Printf("newBuf := make([]byte, %d, %d)\n",len(dec.buf), 2*cap(dec.buf)+minRead)
 		copy(newBuf, dec.buf)
-		fmt.Println(">> copy(newBuf, dec.buf)")
 		dec.buf = newBuf
-		fmt.Println(">> dec.buf = newBuf")
 	}
 	
 	// Read. Delay error for next iteration (after scan).
 	n, err := dec.r.Read(dec.buf[len(dec.buf):cap(dec.buf)])
-	fmt.Printf(">> n, err := dec.r.Read(dec.buf[len(dec.buf):cap(dec.buf)])\n")
-	fmt.Printf("%d, err := dec.r.Read(dec.buf[%d:%d])\n", n, len(dec.buf), cap(dec.buf))
 	dec.buf = dec.buf[0: len(dec.buf)+n]
-	fmt.Println(">> dec.buf = dec.buf[0: len(dec.buf)+n]")
-	fmt.Printf("dec.buf = dec.buf[0: %d]\n", len(dec.buf)+n)
-	
-	fmt.Println("------- e:refill --------")
 	return err
 }
 
@@ -135,33 +123,44 @@ func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\r'
 }
 
-func (dec *Decoder) readValue() (int, error) {
-	fmt.Println("------- b:readValue --------")
-	scanp := dec.scanp
+func isNewLine(c byte) bool {
+	return c == '\n' || c == '\r'
+}
 
+func (dec *Decoder) readValue() (int, error) {
+	scanp := dec.scanp
+	var err error
 Input:
 	for {
-		fmt.Println(">> for i, c := range dec.buf[scanp:]")
 		for i, c := range dec.buf[scanp:] {
-		//fmt.Printf("for %d, %c := range dec.buf[%d]\n", i, c, len(dec.buf[scanp:]))
-			switch c {
-			case '\n':
-				fmt.Println(">> scanp += i")
+			switch {
+			case isNewLine(c):
 				scanp += i
-				fmt.Printf("%d += %d\n", scanp, i)
+				dec.tokenState = tokenNewLine
 				break Input
 			}
 		}
+		
+		scanp = len(dec.buf)
+		
+		if err != nil {
+			dec.err = err
+			return 0, err
+		}
+		
+		n := scanp - dec.scanp
+		err = dec.refill()
+		scanp = dec.scanp + n
 	}
-	fmt.Println(">> return scanp - dec.scanp, nil")
-	fmt.Printf("%d, nil \n", scanp - dec.scanp)
-	fmt.Println("------- e:readValue --------")
 	return scanp - dec.scanp, nil
 }
 
 const (
 	tokenNewLineValue = iota
 	tokenNewLine
+	tokenSeparator
+	tokenBeginQuotes
+	tokenEndQuotes
 )
 
 func (dec *Decoder) tokenPrepareForDecode() error {
