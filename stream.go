@@ -47,23 +47,30 @@ func (dec *Decoder) Decode() ([]string, error) {
 	line := dec.buf[dec.scanp: dec.scanp+n]
 	dec.scanp += n
 	
-	var parts []string
+	var fields []string
 	p := 0
 	for i, c := range line {
 		switch {
-		case c == ',' && dec.tokenState != tokenBeginQuotes:
-			parts = append(parts, string(line[p:i]))
-			p = i+1
+		case c == ',': // found a separator
+			if dec.tokenStack[len(dec.tokenStack)-1] == tokenBeginQuotes {
+				continue
+			}
+			
+			fields = append(fields, string(line[p:i]))
+			p = i + 1
+			
 			dec.tokenState = tokenSeparator
 		case c == '"':
-			if dec.tokenState == tokenBeginQuotes {
-				dec.tokenState = tokenEndQuotes
-			} else {
-				dec.tokenState = tokenBeginQuotes
+			if dec.tokenStack[len(dec.tokenStack)-1] == tokenBeginQuotes {
+				dec.tokenStack = dec.tokenStack[:len(dec.tokenStack)-1]
+				continue
 			}
+			dec.tokenState = tokenBeginQuotes
+			dec.tokenStack = append(dec.tokenStack, dec.tokenState)
 		}
 	}
-	return parts, nil
+	dec.tokenStack = dec.tokenStack[:0]
+	return fields, nil
 	//lineSplit := strings.Split(line, ",")
 	//return lineSplit, nil
 }
@@ -157,17 +164,21 @@ Input:
 
 const (
 	tokenNewLineValue = iota
+	tokenBeginFields
 	tokenNewLine
 	tokenSeparator
 	tokenBeginQuotes
-	tokenEndQuotes
 )
 
 func (dec *Decoder) tokenPrepareForDecode() error {
 	switch dec.tokenState {
 	case tokenNewLine:
 		dec.scanp++
-		dec.tokenState = tokenNewLineValue
+		dec.tokenState = tokenBeginFields
+		dec.tokenStack = append(dec.tokenStack, dec.tokenState)
+	default:
+		dec.tokenState = tokenBeginFields
+		dec.tokenStack = append(dec.tokenStack, dec.tokenState)
 	}
 	return nil
 }

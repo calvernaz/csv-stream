@@ -103,8 +103,8 @@ func readCsvFileStream() {
 	// read open bracket
 	// while the array contains values
 	for dec.More() {
-		fmt.Println(dec.Decode())
-		fmt.Println("more data comming")
+		data, _ := dec.Decode()
+		fmt.Printf("size: %s \n", data)
 	}
 	
 	fmt.Println("no more data")
