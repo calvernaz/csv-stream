@@ -38,6 +38,7 @@ Ken,Thompson,ken
 "Robert","Griesemer","gri"
 `
 	reader := csv.NewReader(strings.NewReader(in))
+
 	for {
 		line, err := reader.Read()
 		if err == io.EOF {

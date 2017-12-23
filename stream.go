@@ -2,6 +2,9 @@ package csv
 
 import (
 	"io"
+	"bufio"
+	"bytes"
+	"unicode"
 )
 
 type SyntaxError struct {
@@ -13,10 +16,14 @@ func (e *SyntaxError) Error() string { return e.msg }
 
 // A Decoder reads and decodes CSV values from an input stream.
 type Decoder struct {
-	r     io.Reader
-	buf   []byte
-	scanp int // start of unread data in buf
-	err   error
+	// Delimiter is the field delimiter.
+	// It is set to comma (',') by NewDecoder.
+	Delimiter rune
+	
+	r         io.Reader
+	buf       []byte
+	scanp     int // start of unread data in buf
+	err       error
 	
 	tokenState int
 	tokenStack []int
@@ -27,7 +34,10 @@ type Decoder struct {
 // The decoder introduces its own buffering and may
 // read data from r beyond the CSV values requested.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{r: r}
+	return &Decoder{
+		Delimiter: ',',
+		r:         bufio.NewReader(r),
+	}
 }
 
 func (dec *Decoder) Decode() ([]string, error) {
@@ -44,14 +54,14 @@ func (dec *Decoder) Decode() ([]string, error) {
 		return nil, err
 	}
 	
-	line := dec.buf[dec.scanp: dec.scanp+n]
+	line := bytes.Runes(dec.buf[dec.scanp: dec.scanp+n])
 	dec.scanp += n
 	
 	var fields []string
 	p := 0
 	for i, c := range line {
 		switch {
-		case c == ',': // found a separator
+		case c == dec.Delimiter: // found a separator
 			if dec.tokenStack[len(dec.tokenStack)-1] == tokenBeginQuotes {
 				continue
 			}
@@ -91,7 +101,7 @@ func (dec *Decoder) peek() (byte, error) {
 	for {
 		for i := dec.scanp; i < len(dec.buf); i++ {
 			c := dec.buf[i]
-			if isSpace(c) || isNewLine(c) {
+			if unicode.IsSpace(rune(c)) {
 				continue
 			}
 			dec.tokenState = tokenNewLineValue
@@ -136,11 +146,7 @@ func (dec *Decoder) More() bool {
 	return err == nil
 }
 
-func isSpace(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\r'
-}
-
-func isNewLine(c byte) bool {
+func isNewLine(c rune) bool {
 	return c == '\n' || c == '\r'
 }
 
@@ -149,7 +155,7 @@ func (dec *Decoder) readValue() (int, error) {
 	var err error
 Input:
 	for {
-		for i, c := range dec.buf[scanp:] {
+		for i, c := range bytes.Runes(dec.buf[scanp:]) {
 			switch {
 			case isNewLine(c):
 				scanp += i
@@ -172,6 +178,7 @@ Input:
 	return scanp - dec.scanp, nil
 }
 
+// TODO: get better names and cleanup non required values
 const (
 	tokenNewLineValue = iota
 	tokenBeginFields
