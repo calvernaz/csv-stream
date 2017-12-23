@@ -56,6 +56,13 @@ func (dec *Decoder) Decode() ([]string, error) {
 				continue
 			}
 			
+			if dec.tokenStack[len(dec.tokenStack)-1] == tokenSeparator {
+				if len(line[p:i]) == 0 {
+					fields = append(fields, "")
+					continue
+				}
+			}
+			
 			fields = append(fields, string(line[p:i]))
 			p = i + 1
 			
@@ -69,10 +76,13 @@ func (dec *Decoder) Decode() ([]string, error) {
 			dec.tokenStack = append(dec.tokenStack, dec.tokenState)
 		}
 	}
+	
+	// last field
+	fields = append(fields, string(line[p:]))
+	// reset
 	dec.tokenStack = dec.tokenStack[:0]
+	
 	return fields, nil
-	//lineSplit := strings.Split(line, ",")
-	//return lineSplit, nil
 }
 
 func (dec *Decoder) peek() (byte, error) {
@@ -176,7 +186,7 @@ func (dec *Decoder) tokenPrepareForDecode() error {
 		dec.scanp++
 		dec.tokenState = tokenBeginFields
 		dec.tokenStack = append(dec.tokenStack, dec.tokenState)
-	default:
+	default: // TODO: cleanup this
 		dec.tokenState = tokenBeginFields
 		dec.tokenStack = append(dec.tokenStack, dec.tokenState)
 	}

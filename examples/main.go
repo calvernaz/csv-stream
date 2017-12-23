@@ -104,7 +104,7 @@ func readCsvFileStream() {
 	// while the array contains values
 	for dec.More() {
 		data, _ := dec.Decode()
-		fmt.Printf("size: %s \n", data)
+		fmt.Printf("size: %s %d \n", data, len(data))
 	}
 	
 	fmt.Println("no more data")
