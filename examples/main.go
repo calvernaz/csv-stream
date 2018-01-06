@@ -114,7 +114,7 @@ func readCsvFileStream() {
 
 func main() {
 	//jsonStream()
-	//readCsv()
+	readCsv()
 	//readStreamCsv()
-	readCsvFileStream()
+	//readCsvFileStream()
 }
