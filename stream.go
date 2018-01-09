@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"unicode"
 	
 )
@@ -312,68 +311,6 @@ func (d *Decoder) peek() (byte, error) {
 		err = d.refill()
 	}
 }
-//
-//func (d *Decoder) readValue() error {
-//	scanp := d.scanp
-//	var err error
-//
-//Input:
-//	for {
-//		// read the buffer
-//		for i, c := range bytes.Runes(d.buf[scanp:]) {
-//			switch c {
-//			case '\r':
-//				r1 := d.readRune(i, scanp)
-//				if r1 != '\n' && unicode.IsSpace(r1) {
-//					scanp += i
-//					d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
-//					continue
-//				}
-//			case d.Delimiter:
-//				scanp += i
-//				d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
-//			case '\n':
-//				scanp += i
-//			default:
-//				d.lineBuffer.WriteRune(rune(c))
-//				scanp += i
-//			}
-//		}
-//
-//		scanp = len(d.buf)
-//
-//		// Did the last read have an error?
-//		// Delayed until now to allow buffer scan.
-//		if err != nil {
-//			if err == io.EOF {
-//				break Input
-//			}
-//			d.err = err
-//			return err
-//		}
-//
-//		// refill the buffer
-//		n := scanp - d.scanp
-//		err = d.refill()
-//		scanp = d.scanp + n
-//	}
-//
-//	d.scanp = scanp
-//
-//	return err
-//}
-
-//func (d *Decoder) readRune(idx, scanp int) rune {
-//	r1, _ := utf8.DecodeRune(d.buf[idx:idx+1])
-//	if r1 == '\r' {
-//		r1, _ = utf8.DecodeRune(d.buf[idx+1:idx+2])
-//		if r1 != '\n' {
-//			r1 = '\r'
-//		}
-//	}
-//	d.column++
-//	return r1
-//}
 
 func (d *Decoder) refill() error {
 	// Make room to read more into the buffer.
@@ -396,15 +333,6 @@ func (d *Decoder) refill() error {
 	n, err := d.r.Read(d.buf[len(d.buf):cap(d.buf)])
 	d.buf = d.buf[0: len(d.buf)+n]
 	return err
-}
-
-func (d *Decoder) addField(fields []string, field string) []string {
-	if d.TrimLeadingSpace {
-		fields = append(fields, strings.TrimSpace(field))
-	} else {
-		fields = append(fields, field)
-	}
-	return fields
 }
 
 func (d *Decoder) isSpace(c byte) bool {
