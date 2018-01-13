@@ -25,37 +25,37 @@ var readTests = []struct {
 	Line   int // Expected error line if != 0
 	Column int // Expected error column if line != 0
 }{
-//	{
-//		Name:   "Simple",
-//		Input:  "a,b,c\n",
-//		Output: [][]string{{"a", "b", "c"}},
-//	},
-//	{
-//		Name:   "CRLF",
-//		Input:  "a,b\r\nc,d\r\n",
-//		Output: [][]string{{"a", "b"}, {"c", "d"}},
-//	},
-//	{
-//		Name:   "BareCR",
-//		Input:  "a,b\rc,d\r\n",
-//		Output: [][]string{{"a", "b\rc", "d"}},
-//	},
-//	{
-//		Name:               "RFC4180test",
-//		UseFieldsPerRecord: true,
-//		Input: `#field1,field2,field3
-//"aaa","bb
-//b","ccc"
-//"a,a","b""bb","ccc"
-//zzz,yyy,xxx
-//`,
-//		Output: [][]string{
-//			{"#field1", "field2", "field3"},
-//			{"aaa", "bb\nb", "ccc"},
-//			{"a,a", `b"bb`, "ccc"},
-//			{"zzz", "yyy", "xxx"},
-//		},
-//	},
+	//{
+	//	Name:   "Simple",
+	//	Input:  "a,b,c\n",
+	//	Output: [][]string{{"a", "b", "c"}},
+	//},
+	//{
+	//	Name:   "CRLF",
+	//	Input:  "a,b\r\nc,d\r\n",
+	//	Output: [][]string{{"a", "b"}, {"c", "d"}},
+	//},
+	//{
+	//	Name:   "BareCR",
+	//	Input:  "a,b\rc,d\r\n",
+	//	Output: [][]string{{"a", "b\rc", "d"}},
+	//},
+	{
+		Name:               "RFC4180test",
+		UseFieldsPerRecord: true,
+		Input: `#field1,field2,field3
+"aaa","bb
+b","ccc"
+"a,a","b""bb","ccc"
+zzz,yyy,xxx
+`,
+		Output: [][]string{
+			{"#field1", "field2", "field3"},
+			{"aaa", "bb\nb", "ccc"},
+			{"a,a", `b"bb`, "ccc"},
+			{"zzz", "yyy", "xxx"},
+		},
+	},
 //	{
 //		Name:   "NoEOLTest",
 //		Input:  "a,b,c",
@@ -114,12 +114,12 @@ var readTests = []struct {
 //		Input:  "#1,2,3\na,b,c",
 //		Output: [][]string{{"#1", "2", "3"}, {"a", "b", "c"}},
 //	},
-	{
-		Name:       "LazyQuotes",
-		LazyQuotes: true,
-		Input:      `a "word","1"2",a","b`,
-		Output:     [][]string{{`a "word"`, `1"2`, `a"`, `b`}},
-	},
+//	{
+//		Name:       "LazyQuotes",
+//		LazyQuotes: true,
+//		Input:      `a "word","1"2",a","b`,
+//		Output:     [][]string{{`a "word"`, `1"2`, `a"`, `b`}},
+//	},
 //	{
 //		Name:       "BareQuotes",
 //		LazyQuotes: true,

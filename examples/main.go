@@ -32,10 +32,8 @@ Ken,Thompson,ken
 }
 
 func readCsv() {
-	in := `first_name,last_name,username
-"Rob","Pike",rob
-Ken,Thompson,ken
-"Robert","Griesemer","gri"
+	in := `
+"a,a","b""bb","ccc"
 `
 	reader := csv.NewReader(strings.NewReader(in))
 
@@ -114,7 +112,7 @@ func readCsvFileStream() {
 
 func main() {
 	//jsonStream()
-	readCsv()
-	//readStreamCsv()
+//	readCsv()
+	readStreamCsv()
 	//readCsvFileStream()
 }

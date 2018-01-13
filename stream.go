@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"unicode"
-	
 )
 
 // These are the errors that can be returned in ParseError.Error
@@ -59,21 +57,20 @@ type Decoder struct {
 	
 	r *bufio.Reader
 	
-	rr *bufio.Reader
+	buf   []byte
+	d     decodeState
+	scanp int // start of unread data in buf
+	scan  scanner
+	err   error
 	
 	// lineBuffer holds the unescaped fields read by readField, one after another.
 	// The fields can be accessed by using the indexes in fieldIndexes.
 	// Example: for the row `a,"b","c""d",e` lineBuffer will contain `abc"de` and
 	// fieldIndexes will contain the indexes 0, 1, 2, 5.
 	lineBuffer bytes.Buffer
-	
 	// Indexes of fields inside lineBuffer
 	// The i'th field starts at offset fieldIndexes[i] in lineBuffer.
 	fieldIndexes []int
-	
-	buf   []byte
-	scanp int // start of unread data in buf
-	err   error
 	
 	tokenState int
 	tokenStack []int
@@ -108,7 +105,7 @@ func (d *Decoder) Decode() (fields []string, err error) {
 	d.fieldIndexes = d.fieldIndexes[:0]
 	
 	// Parse the existing buffered data
-	err = d.decodeBuffer()
+	n, err := d.readRecord()
 	if err != nil {
 		if err == io.EOF {
 			if len(d.fieldIndexes) != 0 {
@@ -118,6 +115,8 @@ func (d *Decoder) Decode() (fields []string, err error) {
 		d.err = err
 		return nil, err
 	}
+	
+	d.scanp += n
 	
 	// Creates room for the individual fields
 	fieldCount := len(d.fieldIndexes)
@@ -137,136 +136,82 @@ func (d *Decoder) Decode() (fields []string, err error) {
 	return fields, nil
 }
 
-const (
-	delimiterToken = iota
-	newLineToken
-	carriageReturnToken
-	quotesToken
-	fieldToken
-	commentToken
-)
 
-func (d *Decoder) decodeBuffer() (err error) {
+// returns when a record is present
+func (d *Decoder) readRecord() (int, error) {
+	d.scan.reset()
 	
 	scanp := d.scanp
+	var err error
 	
-	// at least one index
-	d.tokenStack = d.tokenStack[:0]
-	d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
+	d.fieldIndexes = append(d.fieldIndexes, 0)
 Input:
 	for {
-		for _, r := range d.buf[scanp:] {
-			switch r {
-			case d.Delimiter:
-				if len(d.tokenStack) > 0 && d.tokenStack[len(d.tokenStack)-1] == quotesToken {
-					if d.tokenStack[len(d.tokenStack)-1] != commentToken {
-						d.lineBuffer.WriteByte(r)
-					}
-				} else {
-					if len(d.tokenStack) > 0 {
-						if  d.tokenStack[len(d.tokenStack)-1] != commentToken {
-							d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
-							d.tokenState = delimiterToken
-						}
-					} else {
-						d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
-						d.tokenState = delimiterToken
-					}
-				}
-			case d.Comment:
-				d.tokenState = commentToken
-				d.tokenStack = append(d.tokenStack, d.tokenState)
-			case '"':
-				// end of double-quote field
-				if len(d.tokenStack) > 0 && d.tokenStack[len(d.tokenStack)-1] == quotesToken {
-					d.tokenState = quotesToken
-					d.tokenStack = d.tokenStack[:len(d.tokenStack)-1]
-				} else { // first double-quote field
-					if d.tokenState == quotesToken {
-						d.lineBuffer.WriteRune('"')
-						d.tokenStack = append(d.tokenStack, d.tokenState)
-					} else {
-						if d.LazyQuotes && d.tokenState == fieldToken {
-							d.lineBuffer.WriteRune('"')
-						} else {
-							d.tokenState = quotesToken
-							d.tokenStack = append(d.tokenStack, d.tokenState)
-						}
-					}
-				}
-			case '\n':
-				d.tokenState = newLineToken
-				if len(d.tokenStack) > 0 && d.tokenStack[len(d.tokenStack)-1] == carriageReturnToken {
-					scanp++
-					d.lineBuffer.Truncate(d.lineBuffer.Len()-1)
-					break Input
-				} else if len(d.tokenStack) > 0 && d.tokenStack[len(d.tokenStack)-1] == quotesToken {
-					if d.tokenStack[len(d.tokenStack)-1] != commentToken {
-						d.lineBuffer.WriteByte(r)
-					}
-				} else {
-					scanp++
-					if len(d.tokenStack) > 0 && d.tokenStack[len(d.tokenStack)-1] == commentToken {
-						d.tokenStack = d.tokenStack[:0]
-						continue
-					}
-					break Input
-				}
-			case '\r':
-				if len(d.tokenStack) > 0 && d.tokenStack[len(d.tokenStack)-1] != carriageReturnToken {
-					d.tokenState = carriageReturnToken
-					d.tokenStack = append(d.tokenStack, d.tokenState)
-				} else {
-					d.tokenState = carriageReturnToken
-					d.tokenStack = append(d.tokenStack, d.tokenState)
-				}
-				fallthrough
-			default:
-				d.tokenState = fieldToken
-				if d.TrimLeadingSpace {
-					if !unicode.IsSpace(rune(r)) {
-						if len(d.tokenStack) > 0 {
-							if d.tokenStack[len(d.tokenStack)-1] != commentToken {
-								d.lineBuffer.WriteByte(r)
-							}
-						} else {
-							d.lineBuffer.WriteByte(r)
-						}
-					}
-				} else {
-					if len(d.tokenStack) > 0 {
-						if d.tokenStack[len(d.tokenStack)-1] != commentToken {
-							d.lineBuffer.WriteByte(r)
-						}
-					} else {
-						d.lineBuffer.WriteByte(r)
-					}
-				}
-				
+		// Look in the buffer for a new value.
+		for i, c := range d.buf[scanp:] {
+			d.scan.bytes++
+			v := d.scan.step(&d.scan, c)
+			
+			if v != scanFieldDelimiter && v != scanEndRecord && v != scanSkipSpace {
+				d.lineBuffer.WriteByte(c)
 			}
-			scanp++
-		}
-		
-		//scanp = len(d.buf)
-		
-		// Did the last read have an error?
-		// Delayed until now to allow buffer scan.
-		if err != nil {
-			if err == io.EOF {
+			
+			if v == scanFieldDelimiter {
+				d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
+			}
+			
+			if v == scanEnd {
+				scanp += i
 				break Input
 			}
+			
+			if v == scanEndRecord /*&& d.scan.step(&d.scan, ' ') == scanEnd */{
+				if d.scan.redo {
+					d.lineBuffer.Truncate(d.lineBuffer.Len()-1)
+				}
+				scanp += i + 1
+				break Input
+			}
+			
+			if v == scanError {
+				d.err = d.scan.err
+				return 0, d.scan.err
+			}
+			
+		}
+		scanp = len(d.buf)
+		
+		if err != nil {
+			if err == io.EOF {
+				if d.scan.step(&d.scan, ' ') == scanEnd {
+					break Input
+				}
+				if nonSpace(d.buf) {
+					err = io.ErrUnexpectedEOF
+				}
+			}
 			d.err = err
-			return err
+			return 0, err
 		}
 		
 		n := scanp - d.scanp
 		err = d.refill()
 		scanp = d.scanp + n
 	}
-	
-	d.scanp += scanp - d.scanp
-	
-	return nil
+	return scanp - d.scanp, nil
+}
+
+func nonSpace(b []byte) bool {
+	for _, c := range b {
+		if !isSpace(c) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\r'
 }
 
 // peek checks if there is any data interesting to read.
@@ -280,20 +225,6 @@ func (d *Decoder) peek() (byte, error) {
 			// keep scanning the buffer until it finds something to parse
 			if d.isSpace(c) {
 				continue
-			}
-			if c == d.Comment {
-				d.tokenState = commentToken
-				d.tokenStack = append(d.tokenStack, d.tokenState)
-				continue
-			}
-			if c != '\n' {
-				if len(d.tokenStack) > 0 && d.tokenStack[len(d.tokenStack)-1] == commentToken {
-					continue
-				}
-			} else {
-				if d.isSpace(c) {
-					continue
-				}
 			}
 			
 			d.scanp = i
