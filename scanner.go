@@ -1,7 +1,19 @@
 package csv
 
-import "strconv"
+import (
+	"errors"
+	"io"
+	"strconv"
+	
+)
 
+// These are the errors that can be returned in ParseError.Error
+var (
+	ErrTrailingComma = errors.New("extra delimiter at end of line") // no longer used
+	ErrBareQuote     = errors.New("bare \" in non-quoted-field")
+	ErrQuote         = errors.New("extraneous \" in field")
+	ErrFieldCount    = errors.New("wrong number of fields in line")
+)
 
 func Valid(data []byte) bool {
 	return checkValid(data, &scanner{}) == nil
@@ -22,6 +34,20 @@ func checkValid(data []byte, scan *scanner) error {
 }
 
 type scanner struct {
+	// Delimiter is the field delimiter.
+	// It is set to comma (',') by NewReader.
+	Delimiter byte
+	// If TrimLeadingSpace is true, leading white space in a field is ignored.
+	// This is done even if the field delimiter, Delimiter, is white space.
+	TrimLeadingSpace bool
+	// Comment, if not 0, is the comment character. Lines beginning with the
+	// Comment character without preceding whitespace are ignored.
+	// With leading whitespace the Comment character becomes part of the
+	// field, even if TrimLeadingSpace is true.
+	Comment byte
+	// If LazyQuotes is true, a quote may appear in an unquoted field and a
+	// non-doubled quote may appear in a quoted field.
+	LazyQuotes  bool
 	step func(*scanner, byte) int
 	
 	// Reached end of top-level value
@@ -113,20 +139,43 @@ func (s *scanner) popParseState() {
 
 // stateBeginTextOrEmpty is the state after reading a field without double-quotes.
 func stateBeginTextOrEmpty(s *scanner, c byte) int {
-	if c == ',' {
+	if c == s.Delimiter {
 		return stateEndValue(s, c)
 	}
 	
 	if c == '\n' {
 		return stateEndValue(s, c)
 	}
+	
+	if !s.LazyQuotes && c == '"' {
+		s.err = ErrBareQuote
+		return scanError
+	}
 	return stateBeginValue(s, c)
+}
+
+func stateBeginComment(s *scanner, c byte) int {
+	if c == '\n' {
+		s.step = stateBeginValue
+		return scanSkipSpace
+	}
+	return scanSkipSpace
 }
 
 // stateBeginValue is the state at the beginning of the input.
 func stateBeginValue(s *scanner, c byte) int {
+	if c == ' ' &&  s.TrimLeadingSpace{
+		return scanSkipSpace
+	}
+	
+	if c == s.Comment {
+		s.step = stateBeginComment
+		return scanSkipSpace
+	}
+	
 	// fields either can be in form of a string or text
 	switch c {
+	case s.Delimiter:
 	case '"':
 		s.step = stateInString // stateInString
 		s.pushParseState(parseFieldValue)
@@ -135,13 +184,23 @@ func stateBeginValue(s *scanner, c byte) int {
 		s.redoState = s.step
 		s.step = stateCarriageReturn
 		return scanBeginField
+	case '\n':
+		 return scanEndRecord
 	default:
 		s.step = stateBeginTextOrEmpty
 		s.pushParseState(parseFieldValue)
 		return scanBeginField
 	}
 	
-	return s.error(c, "looking for beginning of value")
+	if s.err != nil {
+		if s.err == io.EOF {
+			return scanFieldDelimiter
+		}
+		return scanSkipSpace
+	}
+	
+	return scanFieldDelimiter
+	//return s.error(c, "looking for beginning of value")
 }
 
 
@@ -179,7 +238,7 @@ func stateInString(s *scanner, c byte) int {
 func stateInQuotedField(s *scanner, c byte) int {
 	s.step = stateInString
 	
-	if c == ',' {
+	if c == s.Delimiter {
 		return stateEndValue(s, c)
 	}
 	
@@ -188,6 +247,10 @@ func stateInQuotedField(s *scanner, c byte) int {
 	}
 	
 	if c != '"' {
+		if !s.LazyQuotes {
+			s.err = ErrQuote
+			return scanError
+		}
 		return scanContinue
 	}
 	
@@ -222,7 +285,7 @@ func stateEndValue(s *scanner, c byte) int {
 	ps := s.parseState[n-1]
 	switch ps {
 	case parseFieldValue:
-		if c == ',' {
+		if c == s.Delimiter {
 			s.step = stateBeginValue
 			s.parseState[n-1] = parseFieldValue
 			return scanFieldDelimiter

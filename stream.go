@@ -3,17 +3,9 @@ package csv
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
-)
-
-// These are the errors that can be returned in ParseError.Error
-var (
-	ErrTrailingComma = errors.New("extra delimiter at end of line") // no longer used
-	ErrBareQuote     = errors.New("bare \" in non-quoted-field")
-	ErrQuote         = errors.New("extraneous \" in field")
-	ErrFieldCount    = errors.New("wrong number of fields in line")
+	
 )
 
 type SyntaxError struct {
@@ -25,14 +17,6 @@ func (e *SyntaxError) Error() string { return e.msg }
 
 // A Decoder reads and decodes CSV values from an input stream.
 type Decoder struct {
-	// Delimiter is the field delimiter.
-	// It is set to comma (',') by NewReader.
-	Delimiter byte
-	// Comment, if not 0, is the comment character. Lines beginning with the
-	// Comment character without preceding whitespace are ignored.
-	// With leading whitespace the Comment character becomes part of the
-	// field, even if TrimLeadingSpace is true.
-	Comment byte
 	// FieldsPerRecord is the number of expected fields per record.
 	// If FieldsPerRecord is positive, Read requires each record to
 	// have the given number of fields. If FieldsPerRecord is 0, Read sets it to
@@ -40,13 +24,9 @@ type Decoder struct {
 	// have the same field count. If FieldsPerRecord is negative, no check is
 	// made and records may have a variable number of fields.
 	FieldsPerRecord int
-	// If LazyQuotes is true, a quote may appear in an unquoted field and a
-	// non-doubled quote may appear in a quoted field.
-	LazyQuotes    bool
+	
 	TrailingComma bool // ignored; here for backwards compatibility
-	// If TrimLeadingSpace is true, leading white space in a field is ignored.
-	// This is done even if the field delimiter, Delimiter, is white space.
-	TrimLeadingSpace bool
+	
 	// ReuseRecord controls whether calls to Read may return a slice sharing
 	// the backing array of the previous call's returned slice for performance.
 	// By default, each call to Read returns newly allocated memory owned by the caller.
@@ -82,8 +62,10 @@ type Decoder struct {
 // read data from r beyond the CSV values requested.
 func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{
-		Delimiter: ',',
-		r:         bufio.NewReader(r),
+		scan: scanner{
+			Delimiter: ',',
+		},
+		r: bufio.NewReader(r),
 	}
 }
 
@@ -91,7 +73,7 @@ func NewDecoder(r io.Reader) *Decoder {
 // current array or object being parsed.
 func (d *Decoder) More() bool {
 	_, err := d.peek()
-	return err == nil
+	return err == nil && d.scan.err == nil
 }
 
 func (d *Decoder) Decode() (fields []string, err error) {
@@ -108,7 +90,7 @@ func (d *Decoder) Decode() (fields []string, err error) {
 	n, err := d.readRecord()
 	if err != nil {
 		if err == io.EOF {
-			if len(d.fieldIndexes) != 0 {
+			if len(d.fieldIndexes) == 0 {
 				err = io.ErrUnexpectedEOF
 			}
 		}
@@ -125,6 +107,7 @@ func (d *Decoder) Decode() (fields []string, err error) {
 	// Break down the fields in the line with the help of
 	// the indexes map
 	line := d.lineBuffer.String()
+	
 	for i, idx := range d.fieldIndexes {
 		if i == fieldCount-1 {
 			fields[i] = line[idx:]
@@ -133,9 +116,18 @@ func (d *Decoder) Decode() (fields []string, err error) {
 		}
 	}
 	
+	if d.FieldsPerRecord > 0 {
+		if len(fields) != d.FieldsPerRecord {
+			//r.column = 0 // report at start of record
+			d.err = ErrFieldCount
+			return fields, d.err
+		}
+	} else if d.FieldsPerRecord == 0 {
+		d.FieldsPerRecord = len(fields)
+	}
+	
 	return fields, nil
 }
-
 
 // returns when a record is present
 func (d *Decoder) readRecord() (int, error) {
@@ -152,7 +144,7 @@ Input:
 			d.scan.bytes++
 			v := d.scan.step(&d.scan, c)
 			
-			if v != scanFieldDelimiter && v != scanEndRecord && v != scanSkipSpace {
+			if v != scanFieldDelimiter && v != scanEndRecord && v != scanSkipSpace && v != scanError {
 				d.lineBuffer.WriteByte(c)
 			}
 			
@@ -165,9 +157,9 @@ Input:
 				break Input
 			}
 			
-			if v == scanEndRecord /*&& d.scan.step(&d.scan, ' ') == scanEnd */{
+			if v == scanEndRecord /*&& d.scan.step(&d.scan, ' ') == scanEnd */ {
 				if d.scan.redo {
-					d.lineBuffer.Truncate(d.lineBuffer.Len()-1)
+					d.lineBuffer.Truncate(d.lineBuffer.Len() - 1)
 				}
 				scanp += i + 1
 				break Input
@@ -183,12 +175,8 @@ Input:
 		
 		if err != nil {
 			if err == io.EOF {
-				if d.scan.step(&d.scan, ' ') == scanEnd {
-					break Input
-				}
-				if nonSpace(d.buf) {
-					err = io.ErrUnexpectedEOF
-				}
+				d.scanp = scanp
+				break Input
 			}
 			d.err = err
 			return 0, err
@@ -267,7 +255,7 @@ func (d *Decoder) refill() error {
 }
 
 func (d *Decoder) isSpace(c byte) bool {
-	if !d.TrimLeadingSpace {
+	if !d.scan.TrimLeadingSpace {
 		return c == '\t' || c == '\r' || c == '\n'
 	}
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n'

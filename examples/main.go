@@ -32,11 +32,9 @@ Ken,Thompson,ken
 }
 
 func readCsv() {
-	in := `
-"a,a","b""bb","ccc"
-`
+	in := "#1,2,3\na,b,c\n#comment"
 	reader := csv.NewReader(strings.NewReader(in))
-
+	reader.Comment = '#'
 	for {
 		line, err := reader.Read()
 		if err == io.EOF {
@@ -112,7 +110,7 @@ func readCsvFileStream() {
 
 func main() {
 	//jsonStream()
-//	readCsv()
-	readStreamCsv()
+	readCsv()
+	//readStreamCsv()
 	//readCsvFileStream()
 }
