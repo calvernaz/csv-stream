@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
-	
+	"unicode"
 )
 
 // These are the errors that can be returned in ParseError.Error
@@ -47,8 +47,8 @@ type scanner struct {
 	Comment byte
 	// If LazyQuotes is true, a quote may appear in an unquoted field and a
 	// non-doubled quote may appear in a quoted field.
-	LazyQuotes  bool
-	step func(*scanner, byte) int
+	LazyQuotes bool
+	step       func(*scanner, byte) int
 	
 	// Reached end of top-level value
 	endTop bool
@@ -60,8 +60,8 @@ type scanner struct {
 	err error
 	
 	// 1-byte redo (see undo method)
-	redo bool
-	redoCode int
+	redo      bool
+	redoCode  int
 	redoState func(*scanner, byte) int
 	
 	// total bytes consumed, updated by decoder.Decode
@@ -69,16 +69,17 @@ type scanner struct {
 }
 
 const (
-	scanContinue = iota // uninteresting byte
+	scanContinue       = iota // uninteresting byte
 	scanBeginField
-	scanFieldDelimiter // field delimiter
-	scanSkipSpace // space byte; can skip
-	scanEndRecord // end of record
-	
+	scanFieldDelimiter  // field delimiter
+	scanSkipSpace       // space byte; can skip
+	scanEndRecord       // end of record
+	scanCarriageReturn
+	scanBareQuotes
 	// Stop
-	scanEnd // top-level value ended *before* this byte;
-	scanError // hit an error, scanner.err
-	
+	scanEnd    // top-level value ended *before* this byte;
+	scanError  // hit an error, scanner.err
+
 )
 
 // These values are stored in the parseState stack.
@@ -86,7 +87,7 @@ const (
 // being scanned. If the parser is inside a nested value
 // the parseState describes the nested state, outermost at entry 0.
 const (
-	parseFieldValue = iota           // parsing field value
+	parseFieldValue = iota // parsing field value
 )
 
 // reset prepares the scanner for use.
@@ -117,7 +118,6 @@ func (s *scanner) eof() int {
 	}
 	return scanError
 }
-
 
 // pushParseState pushes a new parse state p onto the parse stack.
 func (s *scanner) pushParseState(p int) {
@@ -151,7 +151,8 @@ func stateBeginTextOrEmpty(s *scanner, c byte) int {
 		s.err = ErrBareQuote
 		return scanError
 	}
-	return stateBeginValue(s, c)
+	//return stateBeginTextOrEmpty(s, c)
+	return scanContinue
 }
 
 func stateBeginComment(s *scanner, c byte) int {
@@ -164,7 +165,7 @@ func stateBeginComment(s *scanner, c byte) int {
 
 // stateBeginValue is the state at the beginning of the input.
 func stateBeginValue(s *scanner, c byte) int {
-	if c == ' ' &&  s.TrimLeadingSpace{
+	if c == ' ' && s.TrimLeadingSpace {
 		return scanSkipSpace
 	}
 	
@@ -177,17 +178,16 @@ func stateBeginValue(s *scanner, c byte) int {
 	switch c {
 	case s.Delimiter:
 	case '"':
-		s.step = stateInString // stateInString
+		s.step = stateInQuotedField
 		s.pushParseState(parseFieldValue)
 		return scanSkipSpace
 	case '\r':
-		s.redoState = s.step
 		s.step = stateCarriageReturn
-		return scanBeginField
+		return scanSkipSpace
 	case '\n':
-		 return scanEndRecord
+		return scanEndRecord
 	default:
-		s.step = stateBeginTextOrEmpty
+		s.step = stateInUnquotedField
 		s.pushParseState(parseFieldValue)
 		return scanBeginField
 	}
@@ -203,23 +203,20 @@ func stateBeginValue(s *scanner, c byte) int {
 	//return s.error(c, "looking for beginning of value")
 }
 
-
-
 func stateCarriageReturn(s *scanner, c byte) int {
-	if c == '\r' {
+	if s.TrimLeadingSpace && c != '\n' && unicode.IsSpace(rune(c)) {
 		s.step = stateCarriageReturn
-		return scanContinue
+		return scanSkipSpace
 	}
 	
 	if c == '\n' {
-		s.step = s.redoState
-		s.redo = true
 		return stateEndValue(s, c)
 	}
 	
 	s.step = s.redoState
-	return scanContinue
+	return scanCarriageReturn
 }
+
 // stateInQuotes is the state after reading `"`.
 func stateInString(s *scanner, c byte) int {
 	if c == '"' {
@@ -230,19 +227,17 @@ func stateInString(s *scanner, c byte) int {
 		s.step = stateInStringEsc
 		return scanContinue
 	}
-
+	
 	return scanContinue
 }
 
-
-func stateInQuotedField(s *scanner, c byte) int {
-	s.step = stateInString
-	
+func stateBareQuote(s *scanner, c byte) int {
 	if c == s.Delimiter {
 		return stateEndValue(s, c)
 	}
 	
 	if c == '\n' {
+		s.step = stateBeginValue
 		return stateEndValue(s, c)
 	}
 	
@@ -251,12 +246,48 @@ func stateInQuotedField(s *scanner, c byte) int {
 			s.err = ErrQuote
 			return scanError
 		}
-		return scanContinue
+		s.step = stateInQuotedField
+		return scanBareQuotes
+	}
+	
+	s.step = stateInQuotedField
+	return scanContinue
+}
+
+func stateInQuotedField(s *scanner, c byte) int {
+	
+	if c == '"' {
+		s.step = stateBareQuote
+		return scanSkipSpace
+	}
+		
+	return scanContinue
+}
+
+func stateInUnquotedField(s *scanner, c byte) int {
+	if c == s.Delimiter {
+		s.step = stateBeginValue
+		return stateBeginValue(s, c)
+	}
+	
+	if c == '\r' {
+		s.redoState = stateInUnquotedField
+		s.step = stateCarriageReturn
+		return scanSkipSpace
+	}
+	
+	if c == '\n' {
+		s.step = stateBeginValue
+		return scanEndRecord
+	}
+	
+	if !s.LazyQuotes && c == '"' {
+		s.err = ErrBareQuote
+		return scanError
 	}
 	
 	return scanContinue
 }
-
 
 // stateInStringEsc is the state after reading `"\` during a quoted string.
 func stateInStringEsc(s *scanner, c byte) int {
@@ -267,7 +298,6 @@ func stateInStringEsc(s *scanner, c byte) int {
 	}
 	return s.error(c, "in string escape code")
 }
-
 
 func stateEndValue(s *scanner, c byte) int {
 	n := len(s.parseState)
@@ -309,6 +339,7 @@ func stateEndTop(s *scanner, c byte) int {
 	}
 	return scanEnd
 }
+
 // error records an error and switches to the error state.
 func (s *scanner) error(c byte, context string) int {
 	s.step = stateError

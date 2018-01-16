@@ -144,9 +144,18 @@ Input:
 			d.scan.bytes++
 			v := d.scan.step(&d.scan, c)
 			
+			if v == scanBareQuotes {
+				d.lineBuffer.WriteByte('"')
+			}
+			
+			if v == scanCarriageReturn {
+				d.lineBuffer.WriteByte('\r')
+			}
+			
 			if v != scanFieldDelimiter && v != scanEndRecord && v != scanSkipSpace && v != scanError {
 				d.lineBuffer.WriteByte(c)
 			}
+			
 			
 			if v == scanFieldDelimiter {
 				d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
@@ -158,9 +167,6 @@ Input:
 			}
 			
 			if v == scanEndRecord /*&& d.scan.step(&d.scan, ' ') == scanEnd */ {
-				if d.scan.redo {
-					d.lineBuffer.Truncate(d.lineBuffer.Len() - 1)
-				}
 				scanp += i + 1
 				break Input
 			}
@@ -187,15 +193,6 @@ Input:
 		scanp = d.scanp + n
 	}
 	return scanp - d.scanp, nil
-}
-
-func nonSpace(b []byte) bool {
-	for _, c := range b {
-		if !isSpace(c) {
-			return true
-		}
-	}
-	return false
 }
 
 func isSpace(c byte) bool {

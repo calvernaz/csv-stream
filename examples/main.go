@@ -32,9 +32,9 @@ Ken,Thompson,ken
 }
 
 func readCsv() {
-	in := "#1,2,3\na,b,c\n#comment"
+	in := `a "word","1"2",a","b`
 	reader := csv.NewReader(strings.NewReader(in))
-	reader.Comment = '#'
+	reader.LazyQuotes = true
 	for {
 		line, err := reader.Read()
 		if err == io.EOF {
