@@ -107,9 +107,6 @@ func stateBeginValue(s *scanner, c byte) int {
 	case '"':
 		s.step = stateInQuotedField
 		return scanSkipSpace
-	case '\r':
-		s.step = stateCarriageReturn
-		return scanSkipSpace
 	case '\n':
 		return scanEndRecord
 	default:

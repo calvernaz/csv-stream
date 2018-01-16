@@ -89,11 +89,6 @@ func (d *Decoder) Decode() (fields []string, err error) {
 	// Parse the existing buffered data
 	n, err := d.readRecord()
 	if err != nil {
-		if err == io.EOF {
-			if len(d.fieldIndexes) == 0 {
-				err = io.ErrUnexpectedEOF
-			}
-		}
 		d.err = err
 		return nil, err
 	}
@@ -161,11 +156,6 @@ Input:
 				d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
 			}
 			
-			if v == scanEnd {
-				scanp += i
-				break Input
-			}
-			
 			if v == scanEndRecord /*&& d.scan.step(&d.scan, ' ') == scanEnd */ {
 				scanp += i + 1
 				break Input
@@ -184,8 +174,6 @@ Input:
 				d.scanp = scanp
 				break Input
 			}
-			d.err = err
-			return 0, err
 		}
 		
 		n := scanp - d.scanp
