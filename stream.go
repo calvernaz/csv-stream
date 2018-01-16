@@ -195,10 +195,6 @@ Input:
 	return scanp - d.scanp, nil
 }
 
-func isSpace(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\r'
-}
-
 // peek checks if there is any data interesting to read.
 func (d *Decoder) peek() (byte, error) {
 	var err error

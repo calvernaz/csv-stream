@@ -3,7 +3,6 @@ package csv
 import (
 	"errors"
 	"io"
-	"strconv"
 	"unicode"
 )
 
@@ -15,23 +14,6 @@ var (
 	ErrFieldCount    = errors.New("wrong number of fields in line")
 )
 
-func Valid(data []byte) bool {
-	return checkValid(data, &scanner{}) == nil
-}
-
-func checkValid(data []byte, scan *scanner) error {
-	scan.reset()
-	for _, c := range data {
-		scan.bytes++
-		if scan.step(scan, c) == scanError {
-			return scan.err
-		}
-	}
-	if scan.eof() == scanError {
-		return scan.err
-	}
-	return nil
-}
 
 type scanner struct {
 	// Delimiter is the field delimiter.
@@ -100,61 +82,6 @@ func (s *scanner) reset() {
 	s.endTop = false
 }
 
-// eof tells the scanner that the end of input has been reached.
-// It returns a scan status just as s.step does.
-func (s *scanner) eof() int {
-	if s.err != nil {
-		return scanError
-	}
-	if s.endTop {
-		return scanEnd
-	}
-	s.step(s, ' ')
-	if s.endTop {
-		return scanEnd
-	}
-	if s.err == nil {
-		s.err = &SyntaxError{"unexpected end of CSV input", s.bytes}
-	}
-	return scanError
-}
-
-// pushParseState pushes a new parse state p onto the parse stack.
-func (s *scanner) pushParseState(p int) {
-	s.parseState = append(s.parseState, p)
-}
-
-// popParseState pops a parse state (already obtained) off the stack
-// and updates s.step accordingly.
-func (s *scanner) popParseState() {
-	n := len(s.parseState) - 1
-	s.parseState = s.parseState[0:n]
-	if n == 0 {
-		s.step = stateEndTop
-		s.endTop = true
-	} else {
-		s.step = stateEndValue
-	}
-}
-
-// stateBeginTextOrEmpty is the state after reading a field without double-quotes.
-func stateBeginTextOrEmpty(s *scanner, c byte) int {
-	if c == s.Delimiter {
-		return stateEndValue(s, c)
-	}
-	
-	if c == '\n' {
-		return stateEndValue(s, c)
-	}
-	
-	if !s.LazyQuotes && c == '"' {
-		s.err = ErrBareQuote
-		return scanError
-	}
-	//return stateBeginTextOrEmpty(s, c)
-	return scanContinue
-}
-
 func stateBeginComment(s *scanner, c byte) int {
 	if c == '\n' {
 		s.step = stateBeginValue
@@ -179,7 +106,6 @@ func stateBeginValue(s *scanner, c byte) int {
 	case s.Delimiter:
 	case '"':
 		s.step = stateInQuotedField
-		s.pushParseState(parseFieldValue)
 		return scanSkipSpace
 	case '\r':
 		s.step = stateCarriageReturn
@@ -188,7 +114,6 @@ func stateBeginValue(s *scanner, c byte) int {
 		return scanEndRecord
 	default:
 		s.step = stateInUnquotedField
-		s.pushParseState(parseFieldValue)
 		return scanBeginField
 	}
 	
@@ -200,7 +125,6 @@ func stateBeginValue(s *scanner, c byte) int {
 	}
 	
 	return scanFieldDelimiter
-	//return s.error(c, "looking for beginning of value")
 }
 
 func stateCarriageReturn(s *scanner, c byte) int {
@@ -217,19 +141,6 @@ func stateCarriageReturn(s *scanner, c byte) int {
 	return scanCarriageReturn
 }
 
-// stateInQuotes is the state after reading `"`.
-func stateInString(s *scanner, c byte) int {
-	if c == '"' {
-		s.step = stateInQuotedField
-		return scanSkipSpace
-	}
-	if c == '\\' {
-		s.step = stateInStringEsc
-		return scanContinue
-	}
-	
-	return scanContinue
-}
 
 func stateBareQuote(s *scanner, c byte) int {
 	if c == s.Delimiter {
@@ -289,79 +200,12 @@ func stateInUnquotedField(s *scanner, c byte) int {
 	return scanContinue
 }
 
-// stateInStringEsc is the state after reading `"\` during a quoted string.
-func stateInStringEsc(s *scanner, c byte) int {
-	switch c {
-	case '"':
-		s.step = stateInString
-		return scanContinue
-	}
-	return s.error(c, "in string escape code")
-}
-
 func stateEndValue(s *scanner, c byte) int {
-	n := len(s.parseState)
-	if n == 0 {
-		s.step = stateEndTop
-		s.endTop = true
-		return stateEndTop(s, c)
-	}
 	
-	if c <= ' ' && isSpace(c) {
-		s.step = stateEndValue
-		return scanSkipSpace
-	}
-	
-	ps := s.parseState[n-1]
-	switch ps {
-	case parseFieldValue:
 		if c == s.Delimiter {
 			s.step = stateBeginValue
-			s.parseState[n-1] = parseFieldValue
 			return scanFieldDelimiter
-		}
-		if c == '\n' {
-			s.popParseState()
+		} else  {
 			return scanEndRecord
 		}
-		return s.error(c, "after array element")
-	}
-	return s.error(c, "")
-}
-
-// stateEndTop is the state after finishing the top-level value,
-// such as after reading `{}` or `[1,2,3]`.
-// Only space characters should be seen now.
-func stateEndTop(s *scanner, c byte) int {
-	if c != ' ' && c != '\t' && c != '\r' && c != '\n' {
-		// Complain about non-space byte on next call.
-		s.error(c, "after top-level value")
-	}
-	return scanEnd
-}
-
-// error records an error and switches to the error state.
-func (s *scanner) error(c byte, context string) int {
-	s.step = stateError
-	s.err = &SyntaxError{"invalid character " + quoteChar(c) + " " + context, s.bytes}
-	return scanError
-}
-
-func stateError(s *scanner, c byte) int {
-	return scanError
-}
-
-// quoteChar formats c as a quoted character literal
-func quoteChar(c byte) string {
-	// special cases - different from quoted strings
-	if c == '\'' {
-		return `'\''`
-	}
-	if c == '"' {
-		return `'"'`
-	}
-	
-	// use quoted string with different quotation marks
-	s := strconv.Quote(string(c))
-	return "'" + s[1:len(s)-1] + "'"
 }
