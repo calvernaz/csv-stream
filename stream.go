@@ -26,19 +26,14 @@ type Decoder struct {
 	FieldsPerRecord int
 	
 	TrailingComma bool // ignored; here for backwards compatibility
-	
-	// ReuseRecord controls whether calls to Read may return a slice sharing
-	// the backing array of the previous call's returned slice for performance.
-	// By default, each call to Read returns newly allocated memory owned by the caller.
-	ReuseRecord bool
-	
+
 	line   int
 	column int
 	
 	r *bufio.Reader
 	
 	buf   []byte
-	d     decodeState
+	//d     decodeState
 	scanp int // start of unread data in buf
 	scan  scanner
 	err   error
@@ -48,6 +43,7 @@ type Decoder struct {
 	// Example: for the row `a,"b","c""d",e` lineBuffer will contain `abc"de` and
 	// fieldIndexes will contain the indexes 0, 1, 2, 5.
 	lineBuffer bytes.Buffer
+	
 	// Indexes of fields inside lineBuffer
 	// The i'th field starts at offset fieldIndexes[i] in lineBuffer.
 	fieldIndexes []int
@@ -97,8 +93,11 @@ func (d *Decoder) Decode() (fields []string, err error) {
 	
 	// Creates room for the individual fields
 	fieldCount := len(d.fieldIndexes)
-	fields = make([]string, fieldCount)
-	
+	if cap(fields) >= fieldCount {
+		fields = fields[:fieldCount]
+	} else {
+		fields = make([]string, fieldCount)
+	}
 	// Break down the fields in the line with the help of
 	// the indexes map
 	line := d.lineBuffer.String()
@@ -147,7 +146,7 @@ Input:
 				d.lineBuffer.WriteByte('\r')
 			}
 			
-			if v != scanFieldDelimiter && v != scanEndRecord && v != scanSkipSpace && v != scanError {
+			if v != scanFieldDelimiter && v != scanEndRecord && v != scanSkip && v != scanError {
 				d.lineBuffer.WriteByte(c)
 			}
 			
@@ -156,7 +155,7 @@ Input:
 				d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
 			}
 			
-			if v == scanEndRecord /*&& d.scan.step(&d.scan, ' ') == scanEnd */ {
+			if v == scanEndRecord {
 				scanp += i + 1
 				break Input
 			}
@@ -242,6 +241,12 @@ func (d *Decoder) isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
 
+func (d *Decoder) isComment(c byte) {
+	if d.scan.Comment == c {
+	
+	}
+}
+
 // A ParseError is returned for parsing errors.
 // The first line is 1.  The first column is 0.
 type ParseError struct {
@@ -258,6 +263,7 @@ func (d *Decoder) error(err error) error {
 		Err:    err,
 	}
 }
+
 
 func (e *ParseError) Error() string {
 	return fmt.Sprintf("line %d, column %d: %s", e.Line, e.Column, e.Err)

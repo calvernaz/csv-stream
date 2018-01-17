@@ -277,9 +277,8 @@ func TestRead(t *testing.T) {
 			r.FieldsPerRecord = -1
 		}
 		r.scan.LazyQuotes = tt.LazyQuotes
-		//r.TrailingComma = tt.TrailingComma
 		r.scan.TrimLeadingSpace = tt.TrimLeadingSpace
-		//r.ReuseRecord = tt.ReuseRecord
+		
 		if tt.Delimiter != 0 {
 			r.scan.Delimiter = byte(tt.Delimiter)
 		}
