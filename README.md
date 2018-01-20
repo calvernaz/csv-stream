@@ -23,13 +23,11 @@ for dec.More() {
 
 ```go
 func decode(c *websocket.Conn) {
+	dec = csvstream.NewDecoder(c)
 	
-		dec = csvstream.NewDecoder(c)
-	
-		for dec.More() {
-			record, _ := dec.Decode()
-			fmt.Println(record)
-		}
-		
+	for dec.More() {
+		record, _ := dec.Decode()
+		fmt.Println(record)
+	}
 }
 ```
