@@ -11,7 +11,7 @@ var (
 	ErrTrailingComma = errors.New("extra delimiter at end of line") // no longer used
 	ErrBareQuote     = errors.New("bare \" in non-quoted-field")
 	ErrQuote         = errors.New("extraneous \" in field")
-	ErrFieldCount    = errors.New("wrong number of fields in line")
+	ErrFieldCount    = errors.New("wrong number of fields")
 )
 
 type scanner struct {

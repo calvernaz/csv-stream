@@ -17,7 +17,6 @@ func readCsv() {
 	}
 }
 
-
 func main() {
 	readCsv()
 }

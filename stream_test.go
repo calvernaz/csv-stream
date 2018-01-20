@@ -158,12 +158,6 @@ field"`,
 		Input: `"a "word","b"`,
 		Error: `extraneous " in field`, Line: 1, Column: 3,
 	},
-	//{
-	//	Name:               "BadFieldCount",
-	//	UseFieldsPerRecord: true,
-	//	Input:              "a,b,c\nd,e",
-	//	Error:              "wrong number of fields", Line: 2,
-	//},
 	{
 		Name:               "BadFieldCount1",
 		UseFieldsPerRecord: true,
@@ -289,12 +283,14 @@ func TestRead(t *testing.T) {
  			out, err := r.Decode()
 
 			if tt.Error != "" {
+				perr, _ := err.(*ParseError)
 				if err == nil || !strings.Contains(err.Error(), tt.Error) {
 					t.Errorf("%s: error %v, want error %q", tt.Name, err, tt.Error)
+				} else if tt.Line != 0 {
+					if tt.Line != perr.Line || tt.Column != perr.Column {
+						t.Errorf("%s: error at %d:%d expected %d:%d", tt.Name, perr.Line, perr.Column, tt.Line, tt.Column)
+					}
 				}
-				//} else if tt.Line != 0 && (tt.Line != perr.Line || tt.Column != perr.Column) {
-				//	t.Errorf("%s: error at %d:%d expected %d:%d", tt.Name, perr.Line, perr.Column, tt.Line, tt.Column)
-				//}
 			} else if err != nil {
 				t.Errorf("%s: unexpected error %v", tt.Name, err)
 			} else if !reflect.DeepEqual(out, tt.Output[i]) {
@@ -303,5 +299,23 @@ func TestRead(t *testing.T) {
 			}
 			i++
 		}
+	}
+}
+
+func TestBadFieldCount(t *testing.T) {
+	in  := "a,b,c\nd,e"
+	dec := NewDecoder(strings.NewReader(in))
+
+	var err error
+	for dec.More() {
+		_, err = dec.Decode()
+		if err != nil {
+			break
+		}
+	}
+
+	perr, _ := err.(*ParseError)
+	if perr == nil {
+		t.Errorf("error <nil>, want error %q", perr.Error())
 	}
 }

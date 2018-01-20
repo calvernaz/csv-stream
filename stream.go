@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	
 )
 
 type SyntaxError struct {
@@ -112,9 +111,9 @@ func (d *Decoder) Decode() (fields []string, err error) {
 	
 	if d.FieldsPerRecord > 0 {
 		if len(fields) != d.FieldsPerRecord {
-			//r.column = 0 // report at start of record
+			d.column = 0 // report at start of record
 			d.err = ErrFieldCount
-			return fields, d.err
+			return fields, &ParseError{d.line, d.column, d.err }
 		}
 	} else if d.FieldsPerRecord == 0 {
 		d.FieldsPerRecord = len(fields)
@@ -130,6 +129,8 @@ func (d *Decoder) readRecord() (int, error) {
 	scanp := d.scanp
 	var err error
 	
+	d.line++
+	
 	d.fieldIndexes = append(d.fieldIndexes, 0)
 Input:
 	for {
@@ -140,31 +141,40 @@ Input:
 			
 			if v == scanBareQuotes {
 				d.lineBuffer.WriteByte('"')
+				d.column++
 			}
 			
 			if v == scanCarriageReturn {
 				d.lineBuffer.WriteByte('\r')
+				d.column++
 			}
 			
 			if v != scanFieldDelimiter && v != scanEndRecord && v != scanSkip && v != scanError {
 				d.lineBuffer.WriteByte(c)
+				d.column++
 			}
-			
 			
 			if v == scanFieldDelimiter {
 				d.fieldIndexes = append(d.fieldIndexes, d.lineBuffer.Len())
+				d.column++
 			}
 			
 			if v == scanEndRecord {
 				scanp += i + 1
+				d.line++
 				break Input
 			}
 			
 			if v == scanError {
 				d.err = d.scan.err
-				return 0, d.scan.err
+				return 0, &ParseError{ Line: d.line , Column: d.column, Err: d.err }
 			}
 			
+			if v == scanSkip {
+				if c != ' ' && c != '"' {
+					d.column++
+				}
+			}
 		}
 		scanp = len(d.buf)
 		

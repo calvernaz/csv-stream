@@ -1,5 +1,4 @@
-# CSV Stream
-
+# csv-stream
 
 The actual implementation is inspired by the Go JSON decoder and CSV reader, so it can read records from a reader (e.g: file, connection) and is fully compatible with the existing csv parser (passes the same tests).
  
