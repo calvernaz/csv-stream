@@ -1,6 +1,7 @@
 # csv-stream
 
-The actual implementation is inspired by the Go JSON decoder and CSV reader, so it can read records from a reader (e.g: file, connection) and is fully compatible with the existing csv parser (passes the same tests).
+`csv-stream` uses a lookahead parser inspired by the Go JSON decoder and CSV reader, so it can read records from a reader 
+(e.g: file, connection) and is fully compatible with the existing csv parser (passes the same tests).
  
 Ideal for streaming csv records across the network without carrying about how is the data structured.    
 
