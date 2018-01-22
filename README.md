@@ -1,5 +1,5 @@
-[![Build Status](https://travis-ci.org/calvernaz/go-iterators.svg?branch=master)](https://travis-ci.org/calvernaz/go-iterators)
-[![Coverage Status](https://coveralls.io/repos/github/calvernaz/go-iterators/badge.svg?branch=master)](https://coveralls.io/github/calvernaz/go-iterators?branch=master)
+[![Build Status](https://travis-ci.org/calvernaz/csv-stream.svg?branch=master)](https://travis-ci.org/calvernaz/csv-stream)
+[![Coverage Status](https://coveralls.io/repos/github/calvernaz/csv-stream/badge.svg?branch=master)](https://coveralls.io/github/calvernaz/csv-stream?branch=master)
 
 # csv-stream
 
