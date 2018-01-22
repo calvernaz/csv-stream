@@ -4,8 +4,6 @@ go:
 - tip
 
 before_install:
-- go get -u github.com/golang/dep/...
-- dep ensure
 - go get golang.org/x/tools/cmd/cover
 - go get github.com/mattn/goveralls
 
