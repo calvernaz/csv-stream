@@ -129,6 +129,7 @@ func (d *Decoder) readRecord() (int, error) {
 	scanp := d.scanp
 	var err error
 	
+	d.column = -1
 	d.line++
 	
 	d.fieldIndexes = append(d.fieldIndexes, 0)
@@ -166,14 +167,16 @@ Input:
 			}
 			
 			if v == scanError {
+				if !d.scan.LazyQuotes && d.scan.err == ErrQuote {
+					d.column--
+				}
+				d.column++
 				d.err = d.scan.err
 				return 0, &ParseError{ Line: d.line , Column: d.column, Err: d.err }
 			}
 			
 			if v == scanSkip {
-				if c != ' ' && c != '"' {
-					d.column++
-				}
+				d.column++
 			}
 		}
 		scanp = len(d.buf)

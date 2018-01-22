@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"encoding/csv"
 	"fmt"
 	"os"
+	"strings"
 	
 	csvstream "github.com/calvernaz/csv-stream"
 )
@@ -17,6 +19,14 @@ func readCsv() {
 	}
 }
 
+
+func readCsvNonStream() {
+	in := `a""b,c`
+	r := csv.NewReader(strings.NewReader(in))
+	
+	r.Read()
+}
 func main() {
-	readCsv()
+	//readCsv()
+	readCsvNonStream()
 }
