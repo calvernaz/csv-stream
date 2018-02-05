@@ -35,3 +35,27 @@ func decode(c *websocket.Conn) {
 	}
 }
 ```
+
+# Benchmarks
+
+The benchmark tests are the same as the ones in the standard library,
+
+### csv-stream
+
+```go
+BenchmarkRead-4                         	 1000000	      2061 ns/op	     664 B/op	      18 allocs/op
+BenchmarkReadWithFieldsPerRecord-4      	 1000000	      2116 ns/op	     664 B/op	      18 allocs/op
+BenchmarkReadWithoutFieldsPerRecord-4   	 1000000	      2137 ns/op	     664 B/op	      18 allocs/op
+BenchmarkReadLargeFields-4              	   50000	     37344 ns/op	    3936 B/op	      24 allocs/op
+```
+
+### standard library csv
+
+```go
+BenchmarkRead-4                                    	  500000	      3140 ns/op	     664 B/op	      18 allocs/op
+BenchmarkReadWithFieldsPerRecord-4                 	  500000	      3131 ns/op	     664 B/op	      18 allocs/op
+BenchmarkReadWithoutFieldsPerRecord-4              	  500000	      3117 ns/op	     664 B/op	      18 allocs/op
+BenchmarkReadLargeFields-4                         	   20000	     67522 ns/op	    3936 B/op	      24 allocs/op
+```
+
+The tests show a speedup of approximately 30%.   
